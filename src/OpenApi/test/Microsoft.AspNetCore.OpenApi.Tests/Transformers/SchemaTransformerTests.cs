@@ -3,7 +3,9 @@
 
 using System.Globalization;
 using System.Net.Http;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.InternalTesting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OpenApi;
@@ -520,6 +522,33 @@ public class SchemaTransformerTests : OpenApiDocumentServiceTestBase
     }
 
     [Fact]
+    public async Task SchemaTransformer_CanModifyPolymorphicBaseSchema()
+    {
+        var builder = CreateBuilder();
+
+        builder.MapGet("/api/x", () => TypedResults.Ok(new A()));
+
+        var options = new OpenApiOptions();
+        options.AddSchemaTransformer((schema, context, cancellationToken) =>
+        {
+            if (context.JsonTypeInfo.Type == typeof(A))
+            {
+                schema.Extensions ??= new Dictionary<string, IOpenApiExtension>();
+                schema.Extensions["x-my-extension"] = new JsonNodeExtension("this-is-a");
+            }
+            return Task.CompletedTask;
+        });
+
+        await VerifyOpenApiDocument(builder, options, document =>
+        {
+            Assert.True(document.Components.Schemas.TryGetValue("ABase", out var baseSchema));
+            Assert.NotNull(baseSchema.Extensions);
+            Assert.True(baseSchema.Extensions.TryGetValue("x-my-extension", out var baseExtension));
+            Assert.Equal("this-is-a", ((JsonNodeExtension)baseExtension).Node.GetValue<string>());
+        });
+    }
+
+    [Fact]
     public async Task SchemaTransformer_CanModifyPropertiesInAnItemsType()
     {
         var builder = CreateBuilder();
@@ -946,6 +975,23 @@ public class SchemaTransformerTests : OpenApiDocumentServiceTestBase
     {
         public string Name { get; }
         public Shape SomeShape { get; }
+    }
+
+    [JsonDerivedType(typeof(B), "b")]
+    [JsonDerivedType(typeof(C), "c")]
+    private class A
+    {
+        public int I { get; set; }
+    }
+
+    private class B : A
+    {
+        public int J { get; set; }
+    }
+
+    private class C : A
+    {
+        public int K { get; set; }
     }
 
     private class ActivatedTransformer : IOpenApiSchemaTransformer

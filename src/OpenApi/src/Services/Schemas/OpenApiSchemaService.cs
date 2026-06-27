@@ -479,12 +479,19 @@ internal sealed class OpenApiSchemaService(
             var anyOfIndex = 0;
             foreach (var derivedType in jsonTypeInfo.PolymorphismOptions.DerivedTypes)
             {
-                var derivedJsonTypeInfo = _jsonSerializerOptions.GetTypeInfo(derivedType.DerivedType);
                 if (schema.AnyOf.Count <= anyOfIndex)
                 {
                     break;
                 }
+
+                var derivedJsonTypeInfo = _jsonSerializerOptions.GetTypeInfo(derivedType.DerivedType);
                 await InnerApplySchemaTransformersAsync(schema.AnyOf[anyOfIndex], derivedJsonTypeInfo, null, context, transformer, cancellationToken);
+                anyOfIndex++;
+            }
+
+            while (anyOfIndex < schema.AnyOf.Count)
+            {
+                await InnerApplySchemaTransformersAsync(schema.AnyOf[anyOfIndex], jsonTypeInfo, null, context, transformer, cancellationToken);
                 anyOfIndex++;
             }
         }
